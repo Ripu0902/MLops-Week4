@@ -28,7 +28,7 @@ jobs:
         run: |
           pip install --upgrade pip
           # Ensure req.txt includes scikit-learn and matplotlib
-          pip install -r req.txt pytest pandera scikit-learn matplotlib
+          pip install -r req.txt pytest pandera scikit-learn pandas matplotlib
 
       - name: Authenticate to Google Cloud
         id: 'auth'
