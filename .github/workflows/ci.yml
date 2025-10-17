@@ -20,14 +20,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
       - name: Install dependencies
         run: |
+          python -m venv venv
+          source venv/bin/activate
           pip install --upgrade pip
-          pip install dvc dvc-gs
+          pip install -r req.txt
           pip install pytest pandera
-          pip install cml
 
       - name: Authenticate to Google Cloud
         id: 'auth'
@@ -37,11 +38,14 @@ jobs:
 
       - name: Configure DVC for CI
         run: |
+          source venv/bin/activate
           dvc remote default gcsremote
           dvc config core.hardlink_lock true
 
       - name: Pull DVC tracked files
-        run: dvc pull
+        run: |
+          source venv/bin/activate
+          dvc pull
 
       - name: Run unit tests and generate CML report
         run: pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
