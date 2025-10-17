@@ -48,7 +48,7 @@ jobs:
           dvc pull
 
       - name: Run unit tests and generate CML report
-        run: pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
+        run: python -m pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
 
       - name: Create CML report as a PR comment
         if: github.event_name == 'pull_request'
