@@ -24,7 +24,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r req.txt
+          pip install --upgrade pip
+          pip install dvc dvc-gs
           pip install pytest pandera
           pip install cml
 
