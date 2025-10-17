@@ -15,6 +15,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,15 +52,16 @@ jobs:
       - name: Run Tests & Generate Report Artifacts
         # This single command now runs tests AND creates report files if tests pass
         run: pytest tests/test_evaluation_1.py
-
-      - name: Create CML report as a PR comment
-        if: github.event_name == 'pull_request'
+      - name: Setup CML
+        uses: iterative/setup-cml@v2
+      - name: Comment test results with CML
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cml comment create cml_report.md
-
+        run: |
+          cml comment create cml_report.md
       - name: Upload Report Artifacts to GCS
         if: success()
         run: |
           #  Save the report to GCS bucket
           gcloud storage cp cml_report.md confusion_matrix.png gs://mlops-week02-ga02-electric-wave-472614-d5/reports/${{ github.ref_name }}-${{ env.TIMESTAMP }}/
+
