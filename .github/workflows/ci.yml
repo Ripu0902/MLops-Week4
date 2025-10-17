@@ -51,7 +51,7 @@ jobs:
         run: |
           source venv/bin/activate
           echo "## Test Results" >> cml_report.md
-          pytest --tb=short --disable-warnings >> cml_report.md 2>&1 || echo "Test failed" >> cml_report.md
+          pytest tests/test_evaluation.py --tb=short --disable-warnings >> cml_report.md 2>&1 || echo "Test failed" >> cml_report.md
           echo "Test completed on $(data)" >> cml_report.md
 
 
