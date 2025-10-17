@@ -48,11 +48,15 @@ jobs:
           dvc pull
 
       - name: Run unit tests and generate CML report
-        run: python -m pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
+        run: |
+          source venv/bin/activate
+          python -m pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
 
       - name: Create CML report as a PR comment
         if: github.event_name == 'pull_request'
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cml comment create cml_report.md
+        run: |
+          source venv/bin/activate
+          cml comment create cml_report.md
 
