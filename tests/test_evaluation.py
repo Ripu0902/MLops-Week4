@@ -58,21 +58,6 @@ def test_model_evaluation(dvc_data, dvc_model, capsys):
     # Assert that the model accuracy is above a certain threshold
     assert accuracy > 0.95, f"Model accuracy is too low: {accuracy:.4f}"
 
-# Function to generate the CML report
-def generate_cml_report(test_results):
-    with open("cml_report.md", "w") as f:
-        f.write("# Sanity Test Report\n\n")
-        f.write("## Test Results\n\n")
-        f.write("```\n")
-        f.write(test_results)
-        f.write("\n```\n")
-        
-        # Add a table for metrics if you have any
-        # f.write("## Metrics\n\n")
-        # f.write("| Metric | Value |\n")
-        # f.write("|---|---|\n")
-        # f.write(f"| Model Accuracy | `{accuracy:.4f}` |\n")
-
 if __name__ == "__main__":
     # Capture pytest output
     old_stdout = sys.stdout
