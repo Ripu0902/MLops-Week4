@@ -59,4 +59,4 @@ jobs:
         if: success()
         run: |
           #  Save the report to GCS bucket
-          gcloud storage cp cml_report.md confusion_matrix.png gs://${{ secrets.GCS_BUCKET_NAME }}/reports/${{ github.ref_name }}-${{ env.TIMESTAMP }}/
+          gcloud storage cp cml_report.md confusion_matrix.png gs://mlops-week02-ga02-electric-wave-472614-d5/reports/${{ github.ref_name }}-${{ env.TIMESTAMP }}/
