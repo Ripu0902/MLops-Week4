@@ -1,0 +1,53 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r req.txt
+          pip install pytest pandera
+          pip install cml
+
+      - name: Authenticate to Google Cloud
+        id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Configure DVC for CI
+        run: |
+          dvc remote default gcsremote
+          dvc config core.hardlink_lock true
+
+      - name: Pull DVC tracked files
+        run: dvc pull
+
+      - name: Run unit tests and generate CML report
+        run: pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
+
+      - name: Create CML report as a PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cml comment create cml_report.md
+
