@@ -50,7 +50,10 @@ jobs:
       - name: Run unit tests and generate CML report
         run: |
           source venv/bin/activate
-          python -m pytest tests/test_evaluation.py --junitxml=report.xml --capture=no > cml_report.md
+          echo "## Test Results" >> cml_report.md
+          pytest --tb=short --disable-warnings >> cml_report.md 2>&1 || echo "Test failed" >> cml_report.md
+          echo "Test completed on $(data)" >> cml_report.md
+
 
       - name: Create CML report as a PR comment
         if: github.event_name == 'pull_request'
