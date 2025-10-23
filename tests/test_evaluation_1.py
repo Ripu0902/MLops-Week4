@@ -10,12 +10,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from google.cloud import storage
 
-# =============== CONFIG ==================
+# ================== CONFIG ==================
 DATA_PATH = "data/data.csv"
 REPORT_PATH = "cml_report.md"
 CONF_MATRIX_PATH = "confusion_matrix.png"
 METRICS_PATH = "metrics.json"
-# Point to the root bucket/folder containing run artifacts
 GCS_BUCKET = "gs://vertex-mlflow-artifacts-electric-wave-472614-d5"
 
 # ----- Pandera Schema -----
@@ -27,6 +26,7 @@ iris_schema = pa.DataFrameSchema({
     "species": pa.Column(str, pa.Check.isin(['setosa', 'versicolor', 'virginica']))
 })
 
+# ----- DVC Data Fixture -----
 @pytest.fixture(scope="module")
 def dvc_data():
     """Fetch data tracked by DVC."""
@@ -34,6 +34,7 @@ def dvc_data():
         df = pd.read_csv(f)
     return df
 
+# ----- Data Validation Test -----
 def test_data_validation(dvc_data):
     """Validate dataset structure using Pandera."""
     print("\n🔍 Validating data schema...")
@@ -43,36 +44,43 @@ def test_data_validation(dvc_data):
     except pa.errors.SchemaErrors as err:
         pytest.fail(f"❌ Data validation failed:\n{err}")
 
-# ---- Load latest model directly from GCS using MLflow ----
+# ----- Load Latest MLflow Model from GCS -----
 def get_latest_model_from_gcs(bucket_uri):
     """
     Fetch the latest MLflow model artifact folder from GCS.
+    Automatically detects folders containing MLmodel files.
     """
-    print(f"Fetching latest MLflow model from {bucket_uri} ...")
-
+    print(f"\nFetching latest MLflow model from {bucket_uri} ...")
     client = storage.Client()
+
     bucket_name = bucket_uri.replace("gs://", "").split("/")[0]
     prefix = "/".join(bucket_uri.replace("gs://", "").split("/")[1:])
-
     bucket = client.bucket(bucket_name)
     blobs = list(bucket.list_blobs(prefix=prefix))
 
-    # Filter only MLflow model artifact folders
-    model_folders = [b.name for b in blobs if b.name.endswith("/model/") or "model" in b.name.lower()]
+    # Identify all folders containing MLmodel
+    model_folders = [b.name.rsplit("/", 1)[0] for b in blobs if b.name.endswith("MLmodel")]
     if not model_folders:
-        raise FileNotFoundError(f"No model folder found under {bucket_uri}")
+        raise FileNotFoundError(f"No MLflow model found under {bucket_uri}")
 
-    latest_model_path = max(model_folders)
-    model_uri = f"gs://{bucket_name}/{latest_model_path}"
-    print(f"✅ Latest model path: {model_uri}")
+    # Pick the latest by timestamp (blob.updated)
+    latest_model_blob = max(
+        [b for b in blobs if b.name.endswith("MLmodel")],
+        key=lambda x: x.updated
+    )
+    latest_model_folder = latest_model_blob.name.rsplit("/", 1)[0]
 
-    # Load using MLflow
+    model_uri = f"gs://{bucket_name}/{latest_model_folder}"
+    print(f"✅ Latest model folder detected: {model_uri}")
+
+    # Load model using MLflow
     model = mlflow.sklearn.load_model(model_uri)
     return model
 
+# ----- Model Evaluation Test -----
 def test_model_evaluation(dvc_data):
-    """Evaluate latest model from GCS and generate report."""
-    print("\n🚀 Evaluating latest model...")
+    """Evaluate the latest MLflow model from GCS and generate report."""
+    print("\n🚀 Evaluating latest MLflow model...")
     model = get_latest_model_from_gcs(GCS_BUCKET)
 
     X = dvc_data.drop("species", axis=1).values
@@ -85,7 +93,7 @@ def test_model_evaluation(dvc_data):
 
     print(f"🎯 Evaluation complete — Accuracy: {acc:.4f}, F1: {f1:.4f}")
 
-    # ---- Confusion Matrix ----
+    # ---- Confusion Matrix Plot ----
     plt.figure(figsize=(6, 5))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
     plt.xlabel("Predicted")
@@ -103,13 +111,13 @@ def test_model_evaluation(dvc_data):
         f.write("### Confusion Matrix\n")
         f.write(f"![Confusion Matrix]({CONF_MATRIX_PATH})\n")
 
-    # ---- Metrics JSON ----
+    # ---- Metrics JSON for CI/CD ----
     metrics = {"accuracy": acc, "f1_score": f1}
     with open(METRICS_PATH, "w") as jf:
         json.dump(metrics, jf)
 
-    # ---- Assertions for CI/CD ----
+    # ---- CI/CD Assertions ----
     assert acc > 0.8, f"Model accuracy too low: {acc}"
     assert f1 > 0.8, f"Model F1 score too low: {f1}"
 
-    print("✅ Evaluation and reporting completed successfully.")
+    print("✅ Model evaluation and reporting completed successfully.")
