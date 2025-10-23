@@ -1,5 +1,0 @@
-outs:
-- md5: c7b949d68b665291e47f75a406517ebb
-  size: 2385
-  hash: md5
-  path: model_joblib.pkl

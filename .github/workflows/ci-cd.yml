@@ -4,13 +4,9 @@ run-name: CI/CD on ${{ github.ref_name }} triggered by @${{ github.actor }}
 
 on:
   push:
-    branches:
-      - dev
-      - main
+    branches: [ dev, main, week5]
   pull_request:
-    branches:
-      - main
-      - dev
+    branches: [ dev, main]
 
 jobs:
   test:
@@ -32,7 +28,7 @@ jobs:
         run: |
           pip install --upgrade pip
           # Ensure req.txt includes scikit-learn and matplotlib
-          pip install -r req.txt pytest pandera scikit-learn pandas matplotlib
+          pip install -r req.txt pytest pandera scikit-learn pandas matplotlib mlflow seaborn google-cloud-storage
 
       - name: Authenticate to Google Cloud
         id: 'auth'
@@ -44,14 +40,15 @@ jobs:
         run: |
           dvc remote default gcsremote
           dvc pull
+      
+      - name: Run data validation Tests and Evaluate latest model from gcs bucket, stored by mlflow
+        # This single command now runs tests AND creates report files if tests pass
+        run: pytest tests/test_evaluation_1.py
 
       - name: Generate Timestamp
         id: timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      - name: Run Tests & Generate Report Artifacts
-        # This single command now runs tests AND creates report files if tests pass
-        run: pytest tests/test_evaluation_1.py
       - name: Setup CML
         uses: iterative/setup-cml@v2
       - name: Comment test results with CML
