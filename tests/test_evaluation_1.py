@@ -5,7 +5,6 @@ import dvc.api
 import pandera as pa
 import pandas as pd
 import mlflow
-import joblib
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -16,9 +15,10 @@ DATA_PATH = "data/data.csv"
 REPORT_PATH = "cml_report.md"
 CONF_MATRIX_PATH = "confusion_matrix.png"
 METRICS_PATH = "metrics.json"
-GCS_BUCKET ='gs://vertex-mlflow-artifacts-electric-wave-472614-d5/mlflow-artifacts'
+# Point to the root bucket/folder containing run artifacts
+GCS_BUCKET = "gs://vertex-mlflow-artifacts-electric-wave-472614-d5"
 
-
+# ----- Pandera Schema -----
 iris_schema = pa.DataFrameSchema({
     "sepal_length": pa.Column(float, pa.Check.in_range(4.0, 8.0)),
     "sepal_width": pa.Column(float, pa.Check.in_range(2.0, 5.0)),
@@ -34,7 +34,6 @@ def dvc_data():
         df = pd.read_csv(f)
     return df
 
-
 def test_data_validation(dvc_data):
     """Validate dataset structure using Pandera."""
     print("\n🔍 Validating data schema...")
@@ -44,16 +43,12 @@ def test_data_validation(dvc_data):
     except pa.errors.SchemaErrors as err:
         pytest.fail(f"❌ Data validation failed:\n{err}")
 
-
+# ---- Load latest model directly from GCS using MLflow ----
 def get_latest_model_from_gcs(bucket_uri):
     """
-    Fetch the latest registered model artifact from GCS.
-    Assumes models are stored under: gs://bucket/mlflow-artifacts/<experiment_id>/<run_id>/artifacts/model/
+    Fetch the latest MLflow model artifact folder from GCS.
     """
-    print(f"Fetching latest model from {bucket_uri} ...")
-
-    if not bucket_uri.startswith("gs://"):
-        raise ValueError("Invalid GCS bucket URI. Must start with gs://")
+    print(f"Fetching latest MLflow model from {bucket_uri} ...")
 
     client = storage.Client()
     bucket_name = bucket_uri.replace("gs://", "").split("/")[0]
@@ -62,19 +57,18 @@ def get_latest_model_from_gcs(bucket_uri):
     bucket = client.bucket(bucket_name)
     blobs = list(bucket.list_blobs(prefix=prefix))
 
-    # Find latest model.pkl based on updated time
-    model_blobs = [b for b in blobs if b.name.endswith("model.pkl")]
-    if not model_blobs:
-        raise FileNotFoundError(f"No model.pkl found under {bucket_uri}")
+    # Filter only MLflow model artifact folders
+    model_folders = [b.name for b in blobs if b.name.endswith("/model/") or "model" in b.name.lower()]
+    if not model_folders:
+        raise FileNotFoundError(f"No model folder found under {bucket_uri}")
 
-    latest_blob = max(model_blobs, key=lambda b: b.updated)
-    print(f"✅ Found latest model: {latest_blob.name} (updated: {latest_blob.updated})")
+    latest_model_path = max(model_folders)
+    model_uri = f"gs://{bucket_name}/{latest_model_path}"
+    print(f"✅ Latest model path: {model_uri}")
 
-    local_path = "model_latest.pkl"
-    latest_blob.download_to_filename(local_path)
-    print(f"Downloaded model to {local_path}")
-    return joblib.load(local_path)
-
+    # Load using MLflow
+    model = mlflow.sklearn.load_model(model_uri)
+    return model
 
 def test_model_evaluation(dvc_data):
     """Evaluate latest model from GCS and generate report."""
