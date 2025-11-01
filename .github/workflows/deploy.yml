@@ -82,8 +82,10 @@ jobs:
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY2 }}
         
-    - name: Install gke-gcloud-auth-plugin
-      run: gcloud components install gke-gcloud-auth-plugin
+    - name: Install GKE Auth Plugin
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
       
     - name: Get GKE cluster credentials
       # This configures 'kubectl' to talk to your cluster
@@ -116,8 +118,10 @@ jobs:
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY2 }}
         
-    - name: Install gke-gcloud-auth-plugin
-      run: gcloud components install gke-gcloud-auth-plugin
+    - name: Install GKE Auth Plugin
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-pluginn
       
     - name: Get GKE cluster credentials
       run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
