@@ -27,7 +27,7 @@ gcloud iam workload-identity-pools create "github-pool" \
 export POOL_ID=$(gcloud iam workload-identity-pools describe "github-pool" \
     --project=$PROJECT_ID --format='value(name)')
     
-Result : projects/1081441859341/locations/global/workloadIdentityPools/github-pool
+Result : projects/1081441859341/locations/global/workloadIdentityPools/github-pool/providers/github-provider
 
 -------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------
