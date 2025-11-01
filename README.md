@@ -1,254 +1,242 @@
-# MLOps Week 5 Graded Assignment
+# MLOps — Week 6 Graded Assignment
 
-**Name:** Ripunjay Kumar  
+**Student:** Ripunjay Kumar  
 **Roll No:** 21f3002511  
 **Term:** Sept 2025  
-**Course:** MLOps (BSDA5014)  
-**Lab Done by:** Ripunjay Kumar
+**Course:** MLOps (BSDA5014)
 
-## MLOps Pipeline with MLflow Experiment Tracking & Model Registry
+This repository contains the Week 6 graded assignment: an end-to-end MLOps pipeline for Iris classification using MLflow, DVC, automated testing, and CI/CD reporting.
 
-This repository implements a complete MLOps pipeline for Iris classification with integrated experiment tracking, model registry, automated testing, and CI/CD deployment. The pipeline combines MLflow for experiment management, DVC for data versioning, PostgreSQL Cloud SQL for MLflow backend, and automated testing with CML reporting.
+Reproducibility contract (short)
+- Inputs: DVC-tracked Iris dataset (`data/data.csv`), training code (`train_iris_dt_mlflow.py`), environment variables (notably `MLFLOW_TRACKING_SERVER`) and access to configured remotes (GCS, Cloud SQL) when running full pipeline.
+- Outputs: MLflow runs & registered models, model artifacts (in object storage), evaluation reports (`cml_report.md`, `metrics.json`), and optional Docker image for serving the model.
+- Success criteria: training completes and registers a model; evaluation tests assert accuracy and F1 > 0.8; CI produces a markdown report and uploads artifacts.
 
-### Architecture Overview
+Prerequisites (local)
+- Python 3.10+ installed
+- Docker (optional, to build/run the API image)
+- DVC (if you plan to pull data from remotes)
+- Google Cloud SDK (if using GCS/DVC remotes) and proper service account permissions for CI
 
-- **MLflow Tracking Server**: PostgreSQL Cloud SQL backend for experiment metadata
-- **Artifact Storage**: Two GCS buckets - one for DVC data versioning, another for MLflow model artifacts
-- **Model Training**: Decision Tree classifier with hyperparameter experiments logged to MLflow
-- **Model Registry**: Automatic registration of best-performing models
-- **CI/CD Pipeline**: Automated testing, evaluation, and reporting with GitHub Actions
-- **Data Validation**: Schema validation using Pandera
-- **Model Evaluation**: Automated evaluation of latest models from GCS artifacts
+Note: the README sections below include quick, copyable PowerShell commands for local setup on Windows. When running in CI or cloud, use repository secrets to supply credentials (do NOT hard-code them).
 
-## Project Structure
+---
+
+## Project at a glance
+
+- Training: `train_iris_dt_mlflow.py` — Decision Tree experiments logged to MLflow
+- Evaluation: `src/evaluate_latest_model_mlflow.py` — evaluates the latest registered model
+- API: `app/main.py` — FastAPI server that serves the registered model
+- Tests: `tests/test_evaluation_1.py` — data schema checks and model evaluation tests
+- Data versioning: DVC (data file: `data/data.csv`, tracked via `data/data.csv.dvc`)
+- CI/CD: GitHub Actions (workflows live in `.github/workflows/` when present)
+
+## Repository structure
+
+```text
+├── app/                          # FastAPI app for serving the model
+│   └── main.py
+├── data/                         # DVC-tracked data
+│   └── data.csv.dvc
+├── src/                          # Utility scripts
+│   └── evaluate_latest_model_mlflow.py
+├── tests/                        # Test suite (pytest)
+│   └── test_evaluation_1.py
+├── train_iris_dt_mlflow.py       # Training + MLflow logging + model registration
+├── server.sh                     # Helper script to start MLflow tracking server
+├── req.txt                       # Full Python dependencies
+├── req-app.txt                   # Minimal dependencies for running the API
+├── Dockerfile                    # Container image for the API
+└── README.md
 
 ```
-├── .dvc/                          # DVC configuration
-│   └── config                     # DVC remote configuration (GCS bucket)
-├── .github/workflows/             # CI/CD pipeline
-│   └── ci-cd.yml                  # GitHub Actions workflow
-├── data/                          # Dataset directory
-│   ├── data.csv                   # Iris dataset
-│   └── data.csv.dvc              # DVC tracking file
-├── src/                           # Source code
-│   └── evaluate_latest_model_mlflow.py  # Model evaluation script
-├── tests/                         # Test suite
-│   └── test_evaluation_1.py       # Data validation & model evaluation tests
-├── model/                         # Local model artifacts
-├── metrics/                       # Evaluation metrics
-├── train_iris_dt_mlflow.py        # MLflow training script
-├── server.sh                      # MLflow tracking server startup script
-├── req.txt                        # Python dependencies
-└── README.md                      # This file
+
+## Quick notes for Week 6 (graded)
+
+- This README was updated for the Week 6 graded assignment. Ensure your branch/PR mentions Week 6 as required by the course instructions.
+- Tests in `tests/test_evaluation_1.py` assert minimum performance thresholds (accuracy and F1 > 0.8) and perform data validation using Pandera.
+
+## Requirements
+
+Install core dependencies (use `req.txt` for full environment, `req-app.txt` for a minimal API image):
+
+Windows PowerShell example (recommended):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r req.txt
 ```
 
-## Key Components
+For running the API in a lightweight container, `req-app.txt` is used in the provided `Dockerfile`.
 
-### 1. MLflow Integration
+## Setup & configuration
 
-- **Training Script**: [`train_iris_dt_mlflow.py`](train_iris_dt_mlflow.py)
-  - Hyperparameter experiments with Decision Tree classifier
-  - Automatic logging of parameters, metrics, and model artifacts
-  - Model signature inference and input examples
-  - Automatic registration of best-performing models to MLflow Model Registry
+1. Create a `.env` file (or set environment variables) with the MLflow tracking server URI:
 
-### 2. Data & Model Management
+```powershell
+# Example (set your own URI)
+setx MLFLOW_TRACKING_SERVER "http://localhost:6969"
+```
 
-- **DVC Configuration**: [`.dvc/config`](.dvc/config) - GCS bucket for data versioning
-- **MLflow Artifacts**: Separate GCS bucket (`gs://vertex-mlflow-artifacts-electric-wave-472614-d5`) for model storage
-- **PostgreSQL Cloud SQL**: Backend database for MLflow tracking server metadata
+2. If the project uses DVC remote(s), pull the data locally before training/evaluating:
 
-### 3. Testing & Validation
+```powershell
+dvc pull data/data.csv.dvc
+```
 
-- **Test Suite**: [`tests/test_evaluation_1.py`](tests/test_evaluation_1.py)
-  - Data validation using Pandera schema
-  - Automated model evaluation from latest GCS artifacts
-  - Confusion matrix generation and CML reporting
-- **Evaluation Script**: [`src/evaluate_latest_model_mlflow.py`](src/evaluate_latest_model_mlflow.py)
-  - Standalone model evaluation using MLflow Model Registry
+3. If you need to start a local MLflow server (optional), update `server.sh` or provide your own MLflow tracking server and artifact store. The repo includes a `server.sh` helper intended for Unix shells; for Windows, replicate the equivalent commands using PowerShell or WSL.
 
-### 4. MLflow Server Configuration
+## How to run
 
-- **Server Script**: [`server.sh`](server.sh)
-  - Configures MLflow tracking server with PostgreSQL Cloud SQL backend
-  - Sets up artifact storage to dedicated GCS bucket
-  - Enables CORS and host access for web UI and API access
-  - Database: `postgresql+psycopg2://mlflowuser:StrongPassword123@34.31.16.124:5432/mlflowdb`
-  - Artifacts: `gs://vertex-mlflow-artifacts-electric-wave-472614-d5`
-  - Server runs on port 6969 with unrestricted access
+Train (logs runs to MLflow server configured via `MLFLOW_TRACKING_SERVER` env var):
 
-### 5. CI/CD Pipeline
-
-- **Workflow**: [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)
-  - Triggers on pushes to `dev`, `main`, `week5` branches and PRs
-  - Automated data pulling from DVC
-  - Model evaluation from MLflow artifacts in GCS
-  - CML report generation and GitHub PR comments
-  - Artifact upload to GCS bucket
-
-## Workflow Details
-
-### Training Process
-
-1. **Data Retrieval**: DVC pulls the latest Iris dataset from GCS bucket
-2. **Experiment Tracking**: MLflow logs multiple hyperparameter configurations
-3. **Model Registration**: Best-performing model automatically registered to MLflow Model Registry
-4. **Artifact Storage**: Model artifacts stored in dedicated GCS bucket
-
-### Testing & Evaluation
-
-- **`test_data_validation`**: Validates dataset structure using Pandera schema
-  - Checks data types, value ranges, and categorical constraints
-  - Ensures data quality before model evaluation
-
-- **`test_model_evaluation`**: Evaluates latest MLflow model from GCS artifacts
-  - Automatically detects and loads the most recent model from GCS bucket
-  - Computes accuracy and F1-score metrics
-  - Generates confusion matrix visualization
-  - Creates CML markdown report for GitHub PR comments
-  - Asserts model performance thresholds (accuracy > 0.8, F1 > 0.8)
-
-### CI/CD Pipeline Flow
-
-1. **Trigger**: Push to `dev`/`main`/`week5` branches or PR creation
-2. **Environment Setup**: Python 3.10, dependency installation
-3. **Authentication**: GCP service account authentication via `GCP_SA_KEY` secret
-4. **Data Pipeline**: DVC configuration and data pulling from GCS
-5. **Testing**: Automated data validation and model evaluation
-6. **Reporting**: CML report generation and GitHub PR commenting
-7. **Artifact Management**: Upload evaluation reports to GCS bucket with timestamps
-
-## Local Development Setup
-
-### Prerequisites
-
-- Python 3.10+
-- Google Cloud SDK with authentication
-- Access to GCS buckets and PostgreSQL Cloud SQL instance
-
-### Installation & Setup
-
-1. **Clone repository and create virtual environment**:
-
-   ```bash
-   git clone <repository-url>
-   cd <repository-name>
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
-   pip install --upgrade pip
-   pip install -r req.txt pytest pandera scikit-learn pandas matplotlib mlflow seaborn google-cloud-storage
-   ```
-
-3. **Configure environment variables**:
-
-   ```bash
-   # Create .env file with MLflow tracking server URI
-   echo "MLFLOW_TRACKING_SERVER=<your-mlflow-server-uri>" > .env
-   ```
-
-4. **Setup DVC and pull data**:
-
-   ```bash
-   dvc remote default gcsremote
-   dvc pull
-   ```
-
-### Running Components
-
-#### Train Model with MLflow
-
-```bash
+```powershell
 python train_iris_dt_mlflow.py
 ```
 
-#### Run Tests Locally
+Run evaluation (loads the latest registered model from the MLflow registry):
 
-```bash
-pytest tests/test_evaluation_1.py -v
-```
-
-#### Evaluate Latest Model
-
-```bash
+```powershell
 python src/evaluate_latest_model_mlflow.py
 ```
 
-#### Start MLflow Tracking Server
+Run tests (pytest):
 
-```bash
-# Make the script executable
-chmod +x server.sh
-
-# Start MLflow server (requires PostgreSQL Cloud SQL access)
-./server.sh
+```powershell
+pytest -q
 ```
 
-**Note**: The MLflow server connects to:
+Start the FastAPI app locally (requires `MLFLOW_TRACKING_SERVER` and model registered):
 
-- **Database**: PostgreSQL Cloud SQL instance at `34.31.16.124:5432`
-- **Artifacts**: GCS bucket `gs://vertex-mlflow-artifacts-electric-wave-472614-d5`
-- **Web UI**: Available at `http://localhost:6969` after starting
+```powershell
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
-## Infrastructure Configuration
+Or build and run the Docker image (API-only):
 
-### GCS Buckets
+```powershell
+docker build -t iris-api -f Dockerfile .
+docker run -p 8000:8000 --env MLFLOW_TRACKING_SERVER="<your-server>" iris-api
+```
 
-- **DVC Data Storage**: `gs://mlops-week02-ga02-electric-wave-472614-d5`
-  - Stores versioned datasets and model artifacts for DVC tracking
-- **MLflow Artifacts**: `gs://vertex-mlflow-artifacts-electric-wave-472614-d5`
-  - Stores MLflow model artifacts and experiment data
+## Tests and CI expectations
 
-### MLflow Setup
+- The tests validate both dataset schema (Pandera) and model evaluation. Tests assume the latest model artifacts are available in the configured artifact store or registry used by MLflow.
+- CI workflows (if present) will:
+  - authenticate to GCP using a service account (`GCP_SA_KEY` secret)
+  - pull DVC data
+  - run tests and generate a CML-like markdown report
 
-- **Backend Store**: PostgreSQL Cloud SQL instance (`34.31.16.124:5432/mlflowdb`) for metadata storage
-- **Artifact Store**: GCS bucket for model artifacts and experiment files
-- **Model Registry**: Centralized model versioning and lifecycle management
-- **Server Configuration**: [`server.sh`](server.sh) script for easy server startup
-- **Database Credentials**: `mlflowuser:StrongPassword123` (configured in server script)
-- **Server Port**: 6969 with CORS enabled for web UI access
+## DVC & data
 
-### GitHub Secrets Required
+- Data is tracked with DVC (see `data/data.csv.dvc`). Use `dvc pull` to fetch the versioned dataset from the configured remote.
+- If you don't have DVC remotes configured locally, the test fixtures try to load data using `dvc.api` or local `data/data.csv` if present.
 
-- `GCP_SA_KEY`: Google Cloud service account JSON for authentication
-- `GITHUB_TOKEN`: Automatically provided for CML report commenting
+## Notes about cloud resources (where applicable)
+
+- The original repo used GCS buckets and a PostgreSQL Cloud SQL backend for MLflow metadata and artifacts. If you will run in cloud, ensure the correct buckets/DB URIs and credentials are configured via environment variables or secrets.
+- Example GCS bucket names referenced in the project (read-only here):
+  - `gs://vertex-mlflow-artifacts-electric-wave-472614-d5`
+  - `gs://mlops-week02-ga02-electric-wave-472614-d5`
 
 ## Troubleshooting
 
-### Common Issues
+- DVC failures: double-check GCP authentication and remote configuration.
+- MLflow server: confirm tracking URI and that the backend store (DB) is reachable and credentials are correct.
+- Tests fail: ensure that a model is registered and DVC data is available locally.
 
-- **DVC Pull Failures**: Ensure GCP authentication and bucket access permissions
-- **MLflow Server Connection**: Verify PostgreSQL Cloud SQL instance is accessible and credentials are correct
-- **MLflow Artifacts**: Ensure GCS bucket permissions for artifact storage
-- **Test Failures**: Check model availability in GCS bucket and data schema compliance
-- **CI/CD Issues**: Review GitHub Actions logs and GCP service account permissions
-- **Server Startup**: If `server.sh` fails, check database connectivity and GCS bucket access
+## What I changed
 
-### Model Evaluation Criteria
+- This file was refreshed for Week 6 graded assignment. It consolidates the earlier Week 5 contents and adds concise step-by-step notes for local development on Windows, Docker usage, and test expectations.
 
-- **Accuracy Threshold**: > 0.8 (80%)
-- **F1-Score Threshold**: > 0.8 (80%)
-- **Data Validation**: Strict Pandera schema compliance required
+---
 
-## Key Features
+## Deployment & CI files (what they are and how to use them)
 
-- ✅ **Experiment Tracking**: Complete MLflow integration with PostgreSQL backend
-- ✅ **Model Registry**: Automatic registration of best-performing models
-- ✅ **Data Versioning**: DVC integration with GCS for reproducible datasets
-- ✅ **Automated Testing**: Comprehensive data validation and model evaluation
-- ✅ **CI/CD Pipeline**: GitHub Actions with automated reporting
-- ✅ **Cloud Integration**: GCS buckets for scalable artifact storage
-- ✅ **Performance Monitoring**: Automated model performance assertions
-- ✅ **Visualization**: Confusion matrix generation and CML reporting
+This repository includes three kinds of deployment-related artifacts: the `Dockerfile`, GitHub Actions CI/CD workflow(s) under `.github/workflows/`, and the Kubernetes manifests under `gke-deploy/`. Below is a concise explanation of what each file contains, what it does, and how you can use or improve them locally.
 
-## Contact & Support
+### `Dockerfile`
+- Purpose: builds a container image for the FastAPI service in `app/` so the model can be served in Kubernetes or Docker.
+- Key contents (what to expect):
+  - Base image (Python 3.10 slim) and `WORKDIR` set to `/app`.
+  - Installs dependencies listed in `req-app.txt` (keep this file minimal for the API image).
+  - Copies the `app/` folder into the image so the FastAPI app and related modules are available at runtime.
+  - Exposes port 8000 and sets the default command to run `uvicorn main:app --host 0.0.0.0 --port 8000`.
+- How to build locally (PowerShell):
 
-**Student**: Ripunjay Kumar (21f3002511)  
-**Course**: MLOps (BSDA5014) - Sept 2025  
-**Assignment**: Week 5 Graded Assignment
+```powershell
+docker build -t iris-api -f Dockerfile .
+```
 
-For issues or questions, check the GitHub Actions logs and ensure all cloud resources are properly configured and accessible.
+- How to run locally (PowerShell):
+
+```powershell
+docker run -p 8000:8000 --env MLFLOW_TRACKING_SERVER="http://<your-tracking-server>" iris-api
+```
+
+### GitHub Actions workflow(s) (`.github/workflows/*.yml`)
+- Purpose: runs CI checks (install deps, run tests, pull DVC data, evaluate model, generate reports) and upload artifacts or comment PRs with results.
+- Key contents to look for:
+  - `actions/checkout` + `setup-python` for runner setup
+  - `pip install` steps for dependencies (ensure `req.txt` contains required libs)
+  - Authentication step (e.g., `google-github-actions/auth`) using a secret like `GCP_SA_KEY` for GCS/DVC access
+  - DVC commands (`dvc pull`) to fetch the dataset during CI
+  - `pytest` invocation for `tests/test_evaluation_1.py` which produces `cml_report.md` and other artifacts
+  - Artifact upload step to GCS (using `gsutil` or `gcloud storage`) and optional CML comment creation
+- How to run parts locally (adapting CI steps):
+
+```powershell
+# Create venv, install deps
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r req.txt
+
+# Pull DVC data (requires dvc & configured remote)
+dvc pull data/data.csv.dvc
+
+# Run tests
+pytest -q
+```
+
+### Kubernetes manifests (`gke-deploy/deployment.yaml` and `gke-deploy/service.yaml`)
+- Purpose: deploy the built `iris-api` container into a Kubernetes cluster (GKE in this project) and expose it via a LoadBalancer service.
+- Files and what they do:
+  - `deployment.yaml`: declares a `Deployment` with a pod template that runs the container image, exposes container port (8000), and typically contains environment variables (e.g., `MLFLOW_TRACKING_SERVER`) so the app can contact MLflow. It may include resource requests/limits and liveness/readiness probes.
+  - `service.yaml`: creates a `Service` of type `LoadBalancer` to expose the pods on a public IP and forward traffic to container port 8000.
+- How to apply to a Kubernetes cluster (after pushing image to a registry and setting kubeconfig for the cluster):
+
+```powershell
+# Apply manifests
+kubectl apply -f gke-deploy/deployment.yaml
+kubectl apply -f gke-deploy/service.yaml
+
+# Check rollout and service
+kubectl rollout status deployment/iris-api-deployment
+kubectl get svc iris-api-service -w
+```
+
+### Security & best-practice notes
+- Do not hard-code sensitive values (DB URIs, MLflow server URIs, service account keys) in manifests—use Kubernetes `Secrets` or `ConfigMap` and reference them via `env.valueFrom.secretKeyRef` or `env.valueFrom.configMapKeyRef`.
+- In CI, store sensitive credentials as GitHub Secrets (for example `GCP_SA_KEY` and `GCP_PROJECT_ID`) and only expose them to runs that need them.
+- Prefer using tagged image names (e.g., `.../iris-api:v1.0.0`) and update `deployment.yaml` with the exact image tag used by CI to avoid pod drift.
+
+## Key features
+
+- ✅ Experiment tracking with MLflow (parameters, metrics, artifacts)
+- ✅ Model registry for versioned model management
+- ✅ Data versioning using DVC for reproducible datasets
+- ✅ Automated evaluation and data validation (Pandera + pytest)
+- ✅ CI/CD integration (GitHub Actions) to run tests, generate reports, and upload artifacts
+- ✅ Containerized serving with a Dockerfile and Kubernetes manifests for GKE
+- ✅ Configurable for cloud artifact stores (GCS) and managed metadata stores (Cloud SQL)
+
+## Contact & support
+
+If you need help or want to report an issue with this assignment:
+
+- Open an issue in this repository (preferred)
+- Contact the course instructor or teaching assistant as per course guidelines
+
+Student: Ripunjay Kumar (Roll No: 21f3002511) — Week 6 graded assignment
