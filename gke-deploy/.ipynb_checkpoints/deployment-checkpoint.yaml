@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-api-deployment
+spec:
+  replicas: 2  # Run 2 copies of your app
+  selector:
+    matchLabels:
+      app: iris-api
+  template:
+    metadata:
+      labels:
+        app: iris-api
+    spec:
+      serviceAccountName: iris-api-ksa
+      containers:
+      - name: iris-api-container
+        # --- IMPORTANT ---
+        # Replace $PROJECT_ID with your actual project ID
+        image: us-central1-docker.pkg.dev/electric-wave-472614-d5/iris-app-repo/iris-api:v1
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MLFLOW_TRACKING_SERVER
+          value: "http://34.61.233.42:6969"
+        resources:
+          requests:
+            cpu: "250m"  # 1/4 of a CPU
+            memory: "256Mi"

@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+mlflow
+pandas
+python-dotenv
+scikit-learn
+google-cloud-storage

@@ -1,0 +1,93 @@
+name: Build and Deploy to GKE
+
+# Run this when the CI-Pipeline file run successfully for week6 branch
+on:
+  workflow_run:
+    workflows: ["CI-Pipeline"]
+    types:
+      - completed
+    branches:
+      - week6
+    conclusion: success
+
+# Define environment variables for the entire job
+env:
+  GAR_LOCATION: "us-central1"
+  GKE_CLUSTER: "iris-cluster"
+  GKE_REGION: "us-central1"
+  REPOSITORY: "iris-app-repo"
+  IMAGE_NAME: "iris-api"
+  DEPLOYMENT_NAME: "iris-api-deployment"
+
+jobs:
+  build-and-push:
+    name: Build and Push to Artifact Registry
+    runs-on: ubuntu-latest
+
+    # Set permissions for GitHub to authenticate with GCP
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+
+    - name: Build Docker Image
+      id: build
+      # We tag the image with the unique commit SHA
+      run: |
+        export IMAGE_TAG="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+        docker build -t $IMAGE_TAG .
+        docker push $IMAGE_TAG
+        # Pass the new image tag to the next job
+        echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    # This output is used by the 'deploy' job
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+
+  deploy-to-gke:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    # Wait for the 'build-and-push' job to finish first
+    needs: build-and-push
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+    - name: Get GKE cluster credentials
+      # This configures 'kubectl' to talk to your cluster
+      run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
+
+    - name: Deploy new image to GKE
+      # This finds your running deployment and sets its container to use the new image tag
+      run: |
+        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+          iris-api-container=${{ needs.build-and-push.outputs.image_tag }}
+
+    - name: Wait for deployment rollout
+      # This waits for the new pods to be 'Running' before finishing
+      run: kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} --timeout=120s

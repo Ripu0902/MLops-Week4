@@ -1,10 +1,10 @@
-name: CI/CD Pipeline
+name: CI-Pipeline
 # The dynamic name for each run of the workflow
 run-name: CI/CD on ${{ github.ref_name }} triggered by @${{ github.actor }}
 
 on:
   push:
-    branches: [ dev, main, week5]
+    branches: [ dev, main, week5, week6]
   pull_request:
     branches: [ dev, main]
 
