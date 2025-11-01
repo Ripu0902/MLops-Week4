@@ -219,67 +219,90 @@ jobs:
             cat prediction.json || echo "No response body"
           fi
 
-      # ============================================
-      # STEP 10: SETUP CML AND CREATE REPORT
-      # ============================================
-      - name: 📊 Set up CML
-        uses: iterative/setup-cml@v2
-
-      - name: 📝 Create and Post CML Report
-        env:
-          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 📝 Create Deployment Summary
         run: |
-          echo "Creating deployment report..."
+          echo "Creating deployment summary..."
           
-          # Start the report
-          echo "## 🚀 GKE Deployment Successful" > report.md
-          echo "" >> report.md
-          echo "**Commit:** \`${{ github.sha }}\`" >> report.md
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> report.md
-          echo "**Triggered by:** @${{ github.actor }}" >> report.md
-          echo "" >> report.md
-          
-          # Deployment info
-          echo "### 📦 Deployment Information" >> report.md
-          echo "" >> report.md
-          echo "- **Image:** \`$IMAGE_TAG\`" >> report.md
-          echo "- **Cluster:** \`${{ env.GKE_CLUSTER }}\`" >> report.md
-          echo "- **Region:** \`${{ env.GKE_REGION }}\`" >> report.md
-          echo "- **Deployment:** \`${{ env.DEPLOYMENT_NAME }}\`" >> report.md
-          echo "" >> report.md
-          
-          # Service info
-          if [ -n "$SERVICE_IP" ]; then
-            echo "### 🌐 Service Endpoint" >> report.md
-            echo "" >> report.md
-            echo "✅ **Endpoint is live:** \`http://$SERVICE_IP\`" >> report.md
-            echo "" >> report.md
+          # Create GitHub Actions Summary (visible in workflow run)
+          {
+            echo "## 🚀 GKE Deployment Successful"
+            echo ""
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo "**Branch:** \`${{ github.ref_name }}\`"
+            echo "**Triggered by:** @${{ github.actor }}"
+            echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 📦 Deployment Information"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| **Image** | \`$IMAGE_TAG\` |"
+            echo "| **Cluster** | \`${{ env.GKE_CLUSTER }}\` |"
+            echo "| **Region** | \`${{ env.GKE_REGION }}\` |"
+            echo "| **Deployment** | \`${{ env.DEPLOYMENT_NAME }}\` |"
+            echo ""
             
-            # Add test results if available
-            if [ -f "prediction.json" ]; then
-              echo "### 🧪 Prediction Test Result" >> report.md
-              echo "" >> report.md
-              echo '```json' >> report.md
-              cat prediction.json >> report.md
-              echo '```' >> report.md
+            if [ -n "$SERVICE_IP" ]; then
+              echo "### 🌐 Service Endpoint"
+              echo ""
+              echo "✅ **Endpoint is live:** http://$SERVICE_IP"
+              echo ""
+              echo "**Test the API:**"
+              echo '```bash'
+              echo "curl -X POST http://$SERVICE_IP/predict \\"
+              echo '  -H "Content-Type: application/json" \'
+              echo '  -d '"'"'{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'"'"
+              echo '```'
+              echo ""
+              
+              if [ -f "prediction.json" ]; then
+                echo "### 🧪 Prediction Test Result"
+                echo ""
+                echo "✅ **Status:** Endpoint responding correctly"
+                echo ""
+                echo '```json'
+                cat prediction.json
+                echo '```'
+                echo ""
+              fi
+            else
+              echo "### ⏳ Service Endpoint"
+              echo ""
+              echo "⚠️ **Status:** LoadBalancer IP is being provisioned"
+              echo ""
+              echo "Check status with:"
+              echo '```bash'
+              echo "kubectl get service ${{ env.SERVICE_NAME }}"
+              echo '```'
+              echo ""
             fi
-          else
-            echo "### ⏳ Service Endpoint" >> report.md
-            echo "" >> report.md
-            echo "⚠️ LoadBalancer IP is being provisioned. Check with:" >> report.md
-            echo '```bash' >> report.md
-            echo "kubectl get service ${{ env.SERVICE_NAME }}" >> report.md
-            echo '```' >> report.md
-          fi
+            
+            echo "### 📊 Pod Status"
+            echo ""
+            echo '```'
+            kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
+            echo '```'
+            echo ""
+            echo "### 🔍 Quick Commands"
+            echo ""
+            echo '```bash'
+            echo "# View logs"
+            echo "kubectl logs -l app=${{ env.IMAGE_NAME }} --tail=100"
+            echo ""
+            echo "# Check deployment status"
+            echo "kubectl get deployment ${{ env.DEPLOYMENT_NAME }}"
+            echo ""
+            echo "# Get service details"
+            echo "kubectl get service ${{ env.SERVICE_NAME }}"
+            echo ""
+            echo "# Scale deployment"
+            echo "kubectl scale deployment/${{ env.DEPLOYMENT_NAME }} --replicas=3"
+            echo '```'
+            
+          } >> $GITHUB_STEP_SUMMARY
           
-          echo "" >> report.md
-          echo "### 📊 Pod Status" >> report.md
-          echo "" >> report.md
-          echo '```' >> report.md
-          kubectl get pods -l app=${{ env.IMAGE_NAME }} >> report.md
-          echo '```' >> report.md
-          
-          # Post the report as a comment
-          cml comment create report.md
-          
-          echo "✅ Report posted successfully!"
+          echo "✅ Deployment summary created!"
+          echo ""
+          echo "📋 View the full report in the 'Summary' tab of this workflow run"
