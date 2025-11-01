@@ -43,6 +43,10 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
+# --- ADD THIS NEW STEP ---
+    - name: Install gke-gcloud-auth-plugin
+      run: gcloud components install gke-gcloud-auth-plugin
+    # --------------------------
 
     - name: Configure Docker
       run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
@@ -81,7 +85,10 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-      
+# --- ADD THIS NEW STEP ---
+    - name: Install gke-gcloud-auth-plugin
+      run: gcloud components install gke-gcloud-auth-plugin
+    # --------------------------
     - name: Get GKE cluster credentials
       # This configures 'kubectl' to talk to your cluster
       run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
@@ -112,7 +119,10 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-      
+# --- ADD THIS NEW STEP ---
+    - name: Install gke-gcloud-auth-plugin
+      run: gcloud components install gke-gcloud-auth-plugin
+    # --------------------------
     - name: Get GKE cluster credentials
       run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
 
