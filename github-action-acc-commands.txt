@@ -1,24 +1,85 @@
-------------------------------------------------------------------------
-gcloud iam service-accounts create github-actions-sa --display-name="GitHub Actions Deployer"
-------------------------------------------------------------------
-export PROJECT_ID=$(gcloud config get-value project)
----------------------------------------------------------------
-# Allow pushing to Artifact Registry
+export PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+export DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+echo "Granting permissions to: $DEFAULT_SA"
+
+# === COMMAND 2: GRANT TOKEN CREATOR ROLE ===
+# (This fixes the 'getAccessToken' error for docker auth)
+gcloud iam service-accounts add-iam-policy-binding $DEFAULT_SA \
+    --member="serviceAccount:${DEFAULT_SA}" \
+    --role="roles/iam.serviceAccountTokenCreator"
+
+# === COMMAND 3: GRANT ARTIFACT REGISTRY WRITER ROLE ===
+# (This fixes the 'uploadArtifacts' error for docker push)
 gcloud artifacts repositories add-iam-policy-binding iris-app-repo \
     --location=us-central1 \
-    --member="serviceAccount:github-actions-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --member="serviceAccount:${DEFAULT_SA}" \
     --role="roles/artifactregistry.writer"
--------------------------------------------------------------------
-# Allow deploying to GKE
-gcloud projects add-iam-policy-binding $PROJECT_ID \
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export PROJECT_ID=$(gcloud config get-value project)
+
+gcloud iam service-accounts add-iam-policy-binding "github-actions-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --member="serviceAccount:github-actions-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role="roles/container.developer"
+    --role="roles/iam.serviceAccountTokenCreator"
+    
 ----------------------------------------------------------------
 # 1. Enable the necessary API
 gcloud services enable iamcredentials.googleapis.com
 ----------------------------------------------------------------
 # 2. Create the Workload Identity Pool
-gcloud iam workload-identity-pools create "github-pool" \
+gcloud iam workload-identity-pools create "github-pool1" \
     --project=$PROJECT_ID \
     --location=global
     --display-name="GitHub Actions Pool"
@@ -76,6 +137,6 @@ gcloud iam service-accounts add-iam-policy-binding "github-actions-sa@${PROJECT_
 --------------------------------------------------------------------------------------------
 #Set These Github secrets
 GCP_PROJECT_ID = electric-wave-472614-d5
-GCP_WORKLOAD_IDENTITY_PROVIDER = projects/1081441859341/locations/global/workloadIdentityPools/github-pool
-GCP_SERVICE_ACCOUNT = 
+GCP_WORKLOAD_IDENTITY_PROVIDER = projects/1081441859341/locations/global/workloadIdentityPools/github-pool1
+GCP_SERVICE_ACCOUNT = 1081441859341-compute@developer.gserviceaccount.com
 
