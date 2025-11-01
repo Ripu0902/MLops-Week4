@@ -20,7 +20,7 @@ model = mlflow.pyfunc.load_model(model_uri=f"models:/{MODEL_NAME}/1")
 
 @app.get("/")
 def home():
-    return {"message": "Iris Decision Tree Model API is running, my 1st change in code."}
+    return {"message": "Iris Decision Tree Model API is running... V1"}
 
 @app.post("/predict")
 def predict(features: dict):
