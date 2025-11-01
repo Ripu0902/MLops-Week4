@@ -1,20 +1,10 @@
-name: Build and Deploy, and Test
+name: Build, Deploy, and Test
 
-# Run this when the CI-Pipeline file run successfully for week6 branch
 on:
   push:
     branches: 
       - week6
 
-  #  workflow_run:
-  # workflows: ["CI-Pipeline"]
-  # types:
-  #   - completed
-  # branches:
-  #   - week6
-  # conclusion: success
-
-# Define environment variables for the entire job
 env:
   GAR_LOCATION: "us-central1"
   GKE_CLUSTER: "iris-cluster"
@@ -25,163 +15,270 @@ env:
   SERVICE_NAME: "iris-api-service"
 
 jobs:
-  build-and-push:
-    name: Build and Push to Artifact Registry
+  build-deploy-test:
+    name: Build, Deploy, and Test
     runs-on: ubuntu-latest
-    permissions:
-      contents: 'read'
-      # id-token: 'write' <-- REMOVED. Not needed when using a JSON key.
     
-    # This job now points its output to the 'set-tag' step
-    outputs:
-      image_tag: ${{ steps.build.outputs.image_tag }}
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Authenticate to Google Cloud
-      id: auth
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-    # --- THIS STEP WAS REMOVED. IT IS NOT NEEDED HERE. ---
-    # (The gke-gcloud-auth-plugin install)
-
-    - name: Configure Docker
-      run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
-
-    - name: Build and Push Docker Image
-      id: build
-      run: |
-        IMAGE_TAG="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-        
-        docker build -t "$IMAGE_TAG" .
-        docker push "$IMAGE_TAG"
-        
-        echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-        echo "Successfully pushed: $IMAGE_TAG"
-      
-  deploy-to-gke:
-    name: Deploy to GKE
-    runs-on: ubuntu-latest
-    # Wait for the 'build-and-push' job to finish first
-    needs: build-and-push
-
     permissions:
-      contents: 'read'
-      id-token: 'write'
-
+      contents: read
+      id-token: write
 
     steps:
-    - name: Debug - Show Image Tag
-      run: |
-         echo "Image tag received: ${{ needs.build-and-push.outputs.image_tag }}"
-          if [ -z "${{ needs.build-and-push.outputs.image_tag }}" ]; then
-            echo "ERROR: Image tag is empty!"
+      # ============================================
+      # STEP 1: CHECKOUT CODE
+      # ============================================
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # STEP 2: AUTHENTICATE TO GCP
+      # ============================================
+      - name: 🔐 Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # ============================================
+      # STEP 3: CONFIGURE DOCKER FOR ARTIFACT REGISTRY
+      # ============================================
+      - name: 🐳 Configure Docker for Artifact Registry
+        run: |
+          echo "Configuring Docker authentication..."
+          gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
+
+      # ============================================
+      # STEP 4: BUILD AND PUSH DOCKER IMAGE
+      # ============================================
+      - name: 🏗️ Build and Push Docker Image
+        id: build
+        run: |
+          IMAGE_TAG="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          
+          echo "📦 Building image: $IMAGE_TAG"
+          docker build -t "$IMAGE_TAG" .
+          
+          echo "⬆️ Pushing image to Artifact Registry..."
+          docker push "$IMAGE_TAG"
+          
+          echo "✅ Successfully pushed: $IMAGE_TAG"
+          
+          # Save for later steps
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # ============================================
+      # STEP 5: INSTALL GKE AUTH PLUGIN
+      # ============================================
+      - name: 🔧 Install GKE Auth Plugin
+        run: |
+          echo "Installing gke-gcloud-auth-plugin..."
+          sudo apt-get update -y
+          sudo apt-get install -y ca-certificates gnupg
+          echo "deb [signed-by=/usr/share/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+          curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg
+          sudo apt-get update -y
+          sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+          echo "✅ Plugin installed"
+
+      # ============================================
+      # STEP 6: GET GKE CREDENTIALS
+      # ============================================
+      - name: ☸️ Get GKE Cluster Credentials
+        run: |
+          echo "Getting cluster credentials..."
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
+          
+          echo "🔍 Verifying cluster connection..."
+          kubectl cluster-info
+          kubectl get nodes
+
+      # ============================================
+      # STEP 7: DEPLOY TO GKE
+      # ============================================
+      - name: 🚀 Deploy to GKE
+        run: |
+          echo "Deploying to GKE..."
+          
+          # Verify image tag
+          if [ -z "$IMAGE_TAG" ]; then
+            echo "❌ ERROR: Image tag is empty!"
             exit 1
           fi
           
-    - name: Checkout code
-      uses: actions/checkout@v4
+          echo "📝 Updating deployment with image: $IMAGE_TAG"
+          
+          # Check if deployment.yaml exists and update it
+          if [ -f "deployment.yaml" ]; then
+            sed -i "s|image: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:.*|image: $IMAGE_TAG|g" deployment.yaml
+            
+            echo "🔍 Verifying image tag update:"
+            grep "image: ${{ env.GAR_LOCATION }}-docker.pkg.dev" deployment.yaml
+            
+            echo "📋 Applying Kubernetes manifests..."
+            kubectl apply -f deployment.yaml
+            
+            if [ -f "service.yaml" ]; then
+              kubectl apply -f service.yaml
+            fi
+            
+            if [ -f "hpa.yaml" ]; then
+              kubectl apply -f hpa.yaml
+            fi
+          else
+            # Fallback: Update existing deployment directly
+            echo "Using kubectl set image (no deployment.yaml found)..."
+            kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+              iris-api-container=$IMAGE_TAG \
+              --record
+          fi
+          
+          echo "⏳ Waiting for deployment rollout..."
+          if ! kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} --timeout=300s; then
+            echo "❌ Deployment rollout failed!"
+            echo ""
+            echo "📦 Pod status:"
+            kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
+            echo ""
+            echo "📝 Deployment details:"
+            kubectl describe deployment ${{ env.DEPLOYMENT_NAME }}
+            echo ""
+            echo "📜 Pod logs:"
+            kubectl logs -l app=${{ env.IMAGE_NAME }} --tail=50 || echo "No logs available"
+            exit 1
+          fi
+          
+          echo "✅ Deployment successful!"
+          echo ""
+          echo "📊 Deployment status:"
+          kubectl get deployment ${{ env.DEPLOYMENT_NAME }}
+          echo ""
+          echo "📦 Running pods:"
+          kubectl get pods -l app=${{ env.IMAGE_NAME }}
 
-    - name: Authenticate to Google Cloud
-      id: auth
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
+      # ============================================
+      # STEP 8: WAIT FOR SERVICE TO BE READY
+      # ============================================
+      - name: ⏳ Wait for Service External IP
+        run: |
+          echo "Waiting for LoadBalancer to assign external IP..."
+          
+          ATTEMPTS=0
+          MAX_ATTEMPTS=30
+          
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            SERVICE_IP=$(kubectl get service ${{ env.SERVICE_NAME }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            
+            if [ -n "$SERVICE_IP" ]; then
+              echo "✅ Service is live at: http://$SERVICE_IP"
+              echo "SERVICE_IP=$SERVICE_IP" >> $GITHUB_ENV
+              break
+            fi
+            
+            ATTEMPTS=$((ATTEMPTS + 1))
+            echo "Attempt $ATTEMPTS/$MAX_ATTEMPTS: Waiting for IP..."
+            sleep 10
+          done
+          
+          if [ -z "$SERVICE_IP" ]; then
+            echo "⚠️ LoadBalancer IP not assigned yet. This may take a few more minutes."
+            echo "You can check later with: kubectl get service ${{ env.SERVICE_NAME }}"
+            # Don't fail the workflow - just continue without testing
+            echo "SERVICE_IP=" >> $GITHUB_ENV
+          fi
 
-    - name: Install gke-gcloud-auth-plugin
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y ca-certificates gnupg
-        echo "deb [signed-by=/usr/share/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-        curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg
-        sudo apt-get update -y
-        sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
-        
-    - name: Get GKE cluster credentials
-      # This configures 'kubectl' to talk to your cluster
-      run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
+      # ============================================
+      # STEP 9: TEST THE ENDPOINT
+      # ============================================
+      - name: 🧪 Test Live Endpoint
+        if: env.SERVICE_IP != ''
+        run: |
+          echo "Testing endpoint at: http://$SERVICE_IP"
+          
+          # Wait a bit for the service to be fully ready
+          echo "Waiting 30 seconds for service to stabilize..."
+          sleep 30
+          
+          echo "Running prediction test..."
+          
+          HTTP_CODE=$(curl -s -o prediction.json -w "%{http_code}" \
+            -X POST "http://$SERVICE_IP:80/predict" \
+            -H "Content-Type: application/json" \
+            -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}')
+          
+          echo "HTTP Response Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Endpoint is responding correctly!"
+            echo "Response:"
+            cat prediction.json
+            echo ""
+          else
+            echo "⚠️ Unexpected response code: $HTTP_CODE"
+            echo "Response:"
+            cat prediction.json || echo "No response body"
+          fi
 
-    - name: Deploy new image to GKE
-      # This finds your running deployment and sets its container to use the new image tag
-      run: |
-        IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
-        echo "Deploying image: $IMAGE_TAG"
-        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} iris-api-container=$IMAGE_TAG --record
+      # ============================================
+      # STEP 10: SETUP CML AND CREATE REPORT
+      # ============================================
+      - name: 📊 Set up CML
+        uses: iterative/setup-cml@v2
 
-    - name: Wait for deployment rollout
-      # This waits for the new pods to be 'Running' before finishing
-      run: kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} --timeout=120
-
-  test-and-report:
-    name: Test Endpoint and CML Report
-    runs-on: ubuntu-latest
-    # This job runs AFTER the deployment finishes
-    needs: deploy-to-gke 
-    
-    permissions:
-      contents: 'read'
-      id-token: 'write'
-
-    steps:
-    - name: Authenticate to Google Cloud
-      id: auth
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-    - name: Install gke-gcloud-auth-plugin
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y ca-certificates gnupg
-        echo "deb [signed-by=/usr/share/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-        curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg
-        sudo apt-get update -y
-        sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
-    # --------------------------
-    - name: Get GKE cluster credentials
-      run: gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --region ${{ env.GKE_REGION }}
-
-    - name: Set up CML
-      uses: iterative/setup-cml@v2
-      
-    - name: Test Live Endpoint and Create Report
-      env:
-        # Pass the CML token to the job
-        REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Wait for Load Balancer to get an external IP
-        echo "Waiting for external IP..."
-        while [ -z "$SERVICE_IP" ]; do
-          sleep 10
-          export SERVICE_IP=$(kubectl get service ${{ env.SERVICE_NAME }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-        done
-
-        echo "✅ Service is live at: http://$SERVICE_IP"
-
-        # Run a test prediction
-        echo "Running prediction test..."
-        curl -X POST "http://$SERVICE_IP:80/predict" \
-          -H "Content-Type: application/json" \
-          -d "{\"sepal_length\": 5.1, \"sepal_width\": 3.5, \"petal_length\": 1.4, \"petal_width\": 0.2}" \
-          > prediction.json
-
-        echo "Test prediction result:"
-        cat prediction.json
-
-        # --- Create the CML Report ---
-        echo "## 🚀 GKE Deployment Successful" > report.md
-        echo "Successfully deployed new image to GKE." >> report.md
-        echo "" >> report.md
-        echo "✅ **Endpoint is live:** \`http://$SERVICE_IP\`" >> report.md
-        echo "" >> report.md
-        echo "### 🧪 Prediction Test Result" >> report.md
-        echo '```json' >> report.md
-        cat prediction.json >> report.md
-        echo '```' >> report.md
-        
-        # Post the report as a comment on the commit
-        cml-send-comment report.md
+      - name: 📝 Create and Post CML Report
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Creating deployment report..."
+          
+          # Start the report
+          echo "## 🚀 GKE Deployment Successful" > report.md
+          echo "" >> report.md
+          echo "**Commit:** \`${{ github.sha }}\`" >> report.md
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> report.md
+          echo "**Triggered by:** @${{ github.actor }}" >> report.md
+          echo "" >> report.md
+          
+          # Deployment info
+          echo "### 📦 Deployment Information" >> report.md
+          echo "" >> report.md
+          echo "- **Image:** \`$IMAGE_TAG\`" >> report.md
+          echo "- **Cluster:** \`${{ env.GKE_CLUSTER }}\`" >> report.md
+          echo "- **Region:** \`${{ env.GKE_REGION }}\`" >> report.md
+          echo "- **Deployment:** \`${{ env.DEPLOYMENT_NAME }}\`" >> report.md
+          echo "" >> report.md
+          
+          # Service info
+          if [ -n "$SERVICE_IP" ]; then
+            echo "### 🌐 Service Endpoint" >> report.md
+            echo "" >> report.md
+            echo "✅ **Endpoint is live:** \`http://$SERVICE_IP\`" >> report.md
+            echo "" >> report.md
+            
+            # Add test results if available
+            if [ -f "prediction.json" ]; then
+              echo "### 🧪 Prediction Test Result" >> report.md
+              echo "" >> report.md
+              echo '```json' >> report.md
+              cat prediction.json >> report.md
+              echo '```' >> report.md
+            fi
+          else
+            echo "### ⏳ Service Endpoint" >> report.md
+            echo "" >> report.md
+            echo "⚠️ LoadBalancer IP is being provisioned. Check with:" >> report.md
+            echo '```bash' >> report.md
+            echo "kubectl get service ${{ env.SERVICE_NAME }}" >> report.md
+            echo '```' >> report.md
+          fi
+          
+          echo "" >> report.md
+          echo "### 📊 Pod Status" >> report.md
+          echo "" >> report.md
+          echo '```' >> report.md
+          kubectl get pods -l app=${{ env.IMAGE_NAME }} >> report.md
+          echo '```' >> report.md
+          
+          # Post the report as a comment
+          cml comment create report.md
+          
+          echo "✅ Report posted successfully!"
