@@ -79,7 +79,16 @@ jobs:
       contents: 'read'
       id-token: 'write'
 
+
     steps:
+    - name: Debug - Show Image Tag
+      run: |
+         echo "Image tag received: ${{ needs.build-and-push.outputs.image_tag }}"
+          if [ -z "${{ needs.build-and-push.outputs.image_tag }}" ]; then
+            echo "ERROR: Image tag is empty!"
+            exit 1
+          fi
+          
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -105,7 +114,9 @@ jobs:
     - name: Deploy new image to GKE
       # This finds your running deployment and sets its container to use the new image tag
       run: |
-        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} iris-api-container=${{ needs.build-and-push.outputs.image_tag }}
+        IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+        echo "Deploying image: $IMAGE_TAG"
+        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} iris-api-container=$IMAGE_TAG --record
 
     - name: Wait for deployment rollout
       # This waits for the new pods to be 'Running' before finishing
