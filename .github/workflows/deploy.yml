@@ -108,8 +108,7 @@ jobs:
     - name: Deploy new image to GKE
       # This finds your running deployment and sets its container to use the new image tag
       run: |
-        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
-          iris-api-container=${{ needs.build-and-push.outputs.image_tag }}
+        kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} iris-api-container=${{ needs.build-and-push.outputs.image_tag }}
 
     - name: Wait for deployment rollout
       # This waits for the new pods to be 'Running' before finishing
