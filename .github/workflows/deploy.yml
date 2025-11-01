@@ -34,7 +34,7 @@ jobs:
     
     # This job now points its output to the 'set-tag' step
     outputs:
-      image_tag: ${{ steps.set-tag.outputs.image_tag }}
+      image_tag: ${{ steps.build.outputs.image_tag }}
 
     steps:
     - name: Checkout code
