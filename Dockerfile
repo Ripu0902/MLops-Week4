@@ -4,6 +4,9 @@ FROM python:3.10-slim
 # Set the working directory in the container
 WORKDIR /app
 
+ENV MLFLOW_TRACKING_SERVER="http://136.111.206.164:6969"
+
+
 # Copy the requirements file first to leverage Docker cache
 COPY req-app.txt req.txt
 
