@@ -109,17 +109,17 @@ jobs:
           echo "📝 Updating deployment with image: $IMAGE_TAG"
           
           # Check if deployment.yaml exists and update it
-          if [ -f "deployment.yaml" ]; then
-            sed -i "s|image: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:.*|image: $IMAGE_TAG|g" deployment.yaml
+          if [ -f "gke-deploy/deployment.yaml" ]; then
+            sed -i "s|image: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:.*|image: $IMAGE_TAG|g" gke-deploy/deployment.yaml
             
             echo "🔍 Verifying image tag update:"
-            grep "image: ${{ env.GAR_LOCATION }}-docker.pkg.dev" deployment.yaml
+            grep "image: ${{ env.GAR_LOCATION }}-docker.pkg.dev" gke-deploy/deployment.yaml
             
             echo "📋 Applying Kubernetes manifests..."
-            kubectl apply -f deployment.yaml
+            kubectl apply -f gke-deploy/deployment.yaml
             
-            if [ -f "service.yaml" ]; then
-              kubectl apply -f service.yaml
+            if [ -f "gke-deploy/service.yaml" ]; then
+              kubectl apply -f gke-deploy/service.yaml
             fi
             
             if [ -f "hpa.yaml" ]; then
