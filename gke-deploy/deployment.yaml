@@ -22,7 +22,7 @@ spec:
         - containerPort: 8000
         env:
         - name: MLFLOW_TRACKING_SERVER
-          value: "http://34.61.233.42:6969"
+          value: "http://136.111.206.164:6969"
         resources:
           requests:
             cpu: "250m"  # 1/4 of a CPU
