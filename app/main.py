@@ -151,25 +151,6 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
         },
     )
 
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Handles any unhandled exceptions (HTTP 500)."""
-    trace_id = get_trace_id()
-    
-    # Log the full exception details
-    logger.exception(json.dumps({
-        "event": "unhandled_exception",
-        "severity": "CRITICAL",
-        "trace_id": trace_id,
-        "path": str(request.url),
-        "error": str(exc),
-    }), exc_info=True) # exc_info=True adds stack trace
-    
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal Server Error", "trace_id": trace_id},
-    )
-
 # --- Startup Event to Load Model ---
 
 @app.on_event("startup")
