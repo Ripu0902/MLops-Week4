@@ -49,7 +49,7 @@ class IrisFeatures(BaseModel):
 
 class PredictionOut(BaseModel):
     """Output schema for the prediction."""
-    prediction: List[int] = Field(..., example=[0], description="List of predicted class labels")
+    prediction: List[str] = Field(..., example=["setosa"], description="List of predicted class labels")
 
 # --- FastAPI App Initialization ---
 
