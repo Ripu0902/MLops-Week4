@@ -1,21 +1,10 @@
-# Web Framework
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-
-# ML & Data Handling (FROM MLFLOW WARNINGS)
-mlflow==3.5.0
-pandas>=2.0.0  # Usually fine, but pin if it causes issues
-scikit-learn>=1.3.0 # scikit-learn is the model, this must be compatible
-cloudpickle==3.1.1
-lz4==4.4.4
-numpy==1.26.4
-psutil==5.9.3
-pyarrow==21.0.0
-
-# Observability (Logging & Tracing)
-opentelemetry-api>=1.21.0
-opentelemetry-sdk>=1.21.0
+fastapi
+uvicorn[standard]
+mlflow
+pandas
+python-dotenv
+scikit-learn
+google-cloud-storage
+opentelemetry-api
+opentelemetry-sdk
 opentelemetry-exporter-gcp-trace>=1.6.0
-
-# Utilities
-python-dotenv>=1.0.0
