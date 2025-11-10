@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: iris-api-deployment
 spec:
-  replicas: 2  # Run 2 copies of your app
+  replicas: 3
   selector:
     matchLabels:
       app: iris-api
@@ -15,15 +15,41 @@ spec:
       serviceAccountName: iris-api-ksa
       containers:
       - name: iris-api-container
-        # --- IMPORTANT ---
-        # Replace $PROJECT_ID with your actual project ID
         image: us-central1-docker.pkg.dev/electric-wave-472614-d5/iris-app-repo/iris-api:v1
         ports:
         - containerPort: 8000
         env:
         - name: MLFLOW_TRACKING_SERVER
           value: "http://34.123.39.182:6969"
+        
+        # --- HEALTH CHECKS ---
+        
+        readinessProbe:
+          # Checks if the app is ready to serve traffic (e.g., model is loaded)
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 15 # Wait 15s after container starts before first check
+          periodSeconds: 30       # Check every 10 seconds
+          timeoutSeconds: 2         # Wait max 2s for a response
+          failureThreshold: 3     # Mark as "Not Ready" after 3 failed checks
+            
+        livenessProbe:
+          # Checks if the app is alive (e.g., server process is running)
+          httpGet:
+            path: /live
+            port: 8000
+          initialDelaySeconds: 20 # Wait 20s before first check (give it time to be ready)
+          periodSeconds: 15       # Check every 15 seconds
+          timeoutSeconds: 2
+          failureThreshold: 3     # Restart the container after 3 failed checks
+
+        # --- RESOURCE MANAGEMENT ---
+        
         resources:
           requests:
-            cpu: "250m"  # 1/4 of a CPU
-            memory: "256Mi"
+            cpu: "250m"    # Guaranteed 1/4 CPU
+            memory: "256Mi"  # Guaranteed 256MB RAM
+          limits:
+            cpu: "500m"    # Max 1/2 CPU
+            memory: "512Mi"  # Max 512MB RAM

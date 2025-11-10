@@ -5,3 +5,6 @@ pandas
 python-dotenv
 scikit-learn
 google-cloud-storage
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-gcp-trace

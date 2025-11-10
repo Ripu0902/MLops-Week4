@@ -20,10 +20,11 @@ gcloud storage buckets add-iam-policy-binding gs://vertex-mlflow-artifacts-elect
     --member="serviceAccount:iris-api-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/storage.objectViewer"
     
-    
 gcloud iam service-accounts add-iam-policy-binding iris-api-sa@${PROJECT_ID}.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
     --member="serviceAccount:${PROJECT_ID}.svc.id.goog[default/iris-api-ksa]"
+
+kubectl create serviceaccount iris-api-ksa --namespace default
 
 kubectl annotate serviceaccount iris-api-ksa \
     iam.gke.io/gcp-service-account=iris-api-sa@${PROJECT_ID}.iam.gserviceaccount.com \
@@ -32,6 +33,10 @@ kubectl annotate serviceaccount iris-api-ksa \
 kubectl apply -f gke-deploy/deployment.yaml
 
 kubectl apply -f gke-deploy/service.yaml
+
+kubectl apply -f hpa.yaml
+
+kubectl get hpa
 
 kubectl get pods -w
 

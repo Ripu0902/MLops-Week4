@@ -3,7 +3,7 @@ name: Build, Deploy, and Test
 on:
   push:
     branches: 
-      - week6
+      - week7
 
 env:
   GAR_LOCATION: "us-central1"
@@ -122,8 +122,8 @@ jobs:
               kubectl apply -f gke-deploy/service.yaml
             fi
             
-            if [ -f "hpa.yaml" ]; then
-              kubectl apply -f hpa.yaml
+            if [ -f "gke-deploy/hpa.yaml" ]; then
+              kubectl apply -f gke-deploy/hpa.yaml
             fi
           else
             # Fallback: Update existing deployment directly
