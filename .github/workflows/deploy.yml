@@ -226,7 +226,6 @@ jobs:
           echo "Installing WRK..."
           sudo apt-get install -y wrk        
           echo "✅ WRK installed successfully"
-          wrk --version
 
       # ============================================
       # STEP 11: PREPARE LOAD TEST SCRIPT
