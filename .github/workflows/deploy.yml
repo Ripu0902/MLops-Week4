@@ -181,10 +181,8 @@ jobs:
           done
           
           if [ -z "$SERVICE_IP" ]; then
-            echo "⚠️ LoadBalancer IP not assigned yet. This may take a few more minutes."
-            echo "You can check later with: kubectl get service ${{ env.SERVICE_NAME }}"
-            # Don't fail the workflow - just continue without testing
-            echo "SERVICE_IP=" >> $GITHUB_ENV
+            echo "❌ LoadBalancer IP not assigned after $MAX_ATTEMPTS attempts"
+            exit 1
           fi
 
       # ============================================
@@ -197,7 +195,7 @@ jobs:
           
           # Wait a bit for the service to be fully ready
           echo "Waiting 30 seconds for service to stabilize..."
-          sleep 120
+          sleep 30
           
           echo "Running prediction test..."
           
@@ -214,18 +212,249 @@ jobs:
             cat prediction.json
             echo ""
           else
-            echo "⚠️ Unexpected response code: $HTTP_CODE"
+            echo "❌ Unexpected response code: $HTTP_CODE"
             echo "Response:"
             cat prediction.json || echo "No response body"
+            exit 1
           fi
 
+      # ============================================
+      # STEP 10: INSTALL WRK FOR LOAD TESTING
+      # ============================================
+      - name: 📦 Install WRK Load Testing Tool
+        run: |
+          echo "Installing WRK..."
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential libssl-dev git
+          
+          cd /tmp
+          git clone https://github.com/wg/wrk.git
+          cd wrk
+          make
+          sudo cp wrk /usr/local/bin/
+          
+          echo "✅ WRK installed successfully"
+          wrk --version
+
+      # ============================================
+      # STEP 11: PREPARE LOAD TEST SCRIPT
+      # ============================================
+      - name: 📝 Create WRK Load Test Script
+        run: |
+          cat > load_test.lua << 'EOF'
+          -- WRK Load Testing Script for Iris Prediction API
+          math.randomseed(os.time())
+
+          local iris_samples = {
+              { sepal_length = 5.1, sepal_width = 3.5, petal_length = 1.4, petal_width = 0.2 },
+              { sepal_length = 4.9, sepal_width = 3.0, petal_length = 1.4, petal_width = 0.2 },
+              { sepal_length = 5.4, sepal_width = 3.9, petal_length = 1.7, petal_width = 0.4 },
+              { sepal_length = 7.0, sepal_width = 3.2, petal_length = 4.7, petal_width = 1.4 },
+              { sepal_length = 6.4, sepal_width = 3.2, petal_length = 4.5, petal_width = 1.5 },
+              { sepal_length = 6.9, sepal_width = 3.1, petal_length = 4.9, petal_width = 1.5 },
+              { sepal_length = 6.3, sepal_width = 3.3, petal_length = 6.0, petal_width = 2.5 },
+              { sepal_length = 7.1, sepal_width = 3.0, petal_length = 5.9, petal_width = 2.1 },
+              { sepal_length = 6.5, sepal_width = 3.0, petal_length = 5.8, petal_width = 2.2 }
+          }
+
+          request_count = 0
+          error_count = 0
+          success_count = 0
+
+          request = function()
+              request_count = request_count + 1
+              local sample = iris_samples[math.random(#iris_samples)]
+              
+              local body = string.format(
+                  '{"sepal_length": %.1f, "sepal_width": %.1f, "petal_length": %.1f, "petal_width": %.1f}',
+                  sample.sepal_length, sample.sepal_width, sample.petal_length, sample.petal_width
+              )
+              
+              return wrk.format("POST", "/predict", {
+                  ["Content-Type"] = "application/json",
+                  ["Accept"] = "application/json"
+              }, body)
+          end
+
+          response = function(status, headers, body)
+              if status == 200 then
+                  success_count = success_count + 1
+              else
+                  error_count = error_count + 1
+              end
+          end
+
+          done = function(summary, latency, requests)
+              print("\n========================================")
+              print("Load Test Summary")
+              print("========================================")
+              print(string.format("Total Requests:    %d", request_count))
+              print(string.format("Successful:        %d (%.2f%%)", success_count, (success_count/request_count)*100))
+              print(string.format("Failed:            %d (%.2f%%)", error_count, (error_count/request_count)*100))
+              print(string.format("Duration:          %.2f seconds", summary.duration / 1000000))
+              print(string.format("Requests/sec:      %.2f", summary.requests / (summary.duration / 1000000)))
+              print("\n--- Latency Statistics ---")
+              print(string.format("Min:               %.2f ms", latency.min / 1000))
+              print(string.format("Max:               %.2f ms", latency.max / 1000))
+              print(string.format("Mean:              %.2f ms", latency.mean / 1000))
+              print(string.format("50th percentile:   %.2f ms", latency:percentile(50) / 1000))
+              print(string.format("90th percentile:   %.2f ms", latency:percentile(90) / 1000))
+              print(string.format("99th percentile:   %.2f ms", latency:percentile(99) / 1000))
+              print("========================================\n")
+          end
+          EOF
+          
+          echo "✅ Load test script created"
+          cat load_test.lua
+
+      # ============================================
+      # STEP 12: RECORD PRE-LOAD TEST STATE
+      # ============================================
+      - name: 📊 Record Initial Pod State
+        run: |
+          echo "Recording initial pod state before load test..."
+          echo ""
+          echo "📦 Current pods:"
+          kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
+          echo ""
+          echo "📈 Current HPA status:"
+          kubectl get hpa
+          echo ""
+          echo "Initial pod count:" > load_test_results.txt
+          INITIAL_PODS=$(kubectl get pods -l app=${{ env.IMAGE_NAME }} --no-headers | wc -l)
+          echo "$INITIAL_PODS" >> load_test_results.txt
+          echo "Initial pods: $INITIAL_PODS"
+          echo "INITIAL_PODS=$INITIAL_PODS" >> $GITHUB_ENV
+
+      # ============================================
+      # STEP 13: RUN STRESS TEST WITH WRK
+      # ============================================
+      - name: 🔥 Run WRK Stress Test (>1000 requests)
+        run: |
+          echo "========================================="
+          echo "🔥 Starting WRK Stress Test"
+          echo "========================================="
+          echo "Target: http://$SERVICE_IP/predict"
+          echo "Configuration:"
+          echo "  - Threads: 4"
+          echo "  - Connections: 50"
+          echo "  - Duration: 60 seconds"
+          echo "  - Expected requests: >1000"
+          echo "========================================="
+          echo ""
+          
+          # Run WRK load test
+          wrk -t4 -c50 -d60s -s load_test.lua http://$SERVICE_IP 2>&1 | tee wrk_output.txt
+          
+          echo ""
+          echo "✅ Load test completed"
+          
+          # Extract key metrics
+          TOTAL_REQUESTS=$(grep -oP "(?<=Total Requests:\s{4})\d+" wrk_output.txt || echo "0")
+          REQUESTS_PER_SEC=$(grep -oP "(?<=Requests/sec:\s{6})[0-9.]+(?= )" wrk_output.txt || echo "0")
+          
+          echo ""
+          echo "Total Requests: $TOTAL_REQUESTS"
+          echo "Requests/sec: $REQUESTS_PER_SEC"
+          
+          echo "" >> load_test_results.txt
+          echo "Total Requests: $TOTAL_REQUESTS" >> load_test_results.txt
+          echo "Requests per second: $REQUESTS_PER_SEC" >> load_test_results.txt
+
+      # ============================================
+      # STEP 14: MONITOR AUTO-SCALING
+      # ============================================
+      - name: 📈 Monitor Kubernetes Auto-Scaling
+        run: |
+          echo "========================================="
+          echo "📈 Monitoring Auto-Scaling Activity"
+          echo "========================================="
+          
+          # Monitor for 2 minutes to observe scaling
+          MONITORING_DURATION=120
+          INTERVAL=10
+          ITERATIONS=$((MONITORING_DURATION / INTERVAL))
+          
+          echo "Monitoring for $MONITORING_DURATION seconds..."
+          echo ""
+          
+          for i in $(seq 1 $ITERATIONS); do
+            echo "--- Check $i/$ITERATIONS ($(date +%H:%M:%S)) ---"
+            
+            POD_COUNT=$(kubectl get pods -l app=${{ env.IMAGE_NAME }} --no-headers | grep -c "Running" || echo "0")
+            echo "Running pods: $POD_COUNT"
+            
+            echo "Pod status:"
+            kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
+            
+            echo ""
+            echo "HPA status:"
+            kubectl get hpa
+            
+            echo ""
+            echo "HPA description:"
+            kubectl describe hpa 2>/dev/null || echo "No HPA configured"
+            
+            echo ""
+            echo "----------------------------------------"
+            echo ""
+            
+            sleep $INTERVAL
+          done
+          
+          # Record final state
+          FINAL_PODS=$(kubectl get pods -l app=${{ env.IMAGE_NAME }} --no-headers | grep -c "Running" || echo "0")
+          MAX_PODS=$(kubectl get hpa -o jsonpath='{.items[0].spec.maxReplicas}' 2>/dev/null || echo "N/A")
+          
+          echo "" >> load_test_results.txt
+          echo "Final pod count: $FINAL_PODS" >> load_test_results.txt
+          echo "Max pods allowed: $MAX_PODS" >> load_test_results.txt
+          
+          echo "FINAL_PODS=$FINAL_PODS" >> $GITHUB_ENV
+          echo "MAX_PODS=$MAX_PODS" >> $GITHUB_ENV
+
+      # ============================================
+      # STEP 15: VERIFY AUTO-SCALING OCCURRED
+      # ============================================
+      - name: ✅ Verify Auto-Scaling Behavior
+        run: |
+          echo "========================================="
+          echo "✅ Auto-Scaling Verification"
+          echo "========================================="
+          
+          echo "Initial pods: $INITIAL_PODS"
+          echo "Final pods: $FINAL_PODS"
+          echo "Max pods allowed: $MAX_PODS"
+          echo ""
+          
+          if [ "$FINAL_PODS" -gt "$INITIAL_PODS" ]; then
+            echo "✅ SUCCESS: Auto-scaling occurred!"
+            echo "   Scaled from $INITIAL_PODS to $FINAL_PODS pods"
+            echo "auto_scaling_success=true" >> load_test_results.txt
+          else
+            echo "⚠️  WARNING: No scaling observed"
+            echo "   This might mean:"
+            echo "   - Load was not high enough"
+            echo "   - HPA not configured properly"
+            echo "   - Metrics server needs time to collect data"
+            echo "auto_scaling_success=false" >> load_test_results.txt
+          fi
+          
+          echo ""
+          echo "Final pod status:"
+          kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
+
+      # ============================================
+      # STEP 16: CREATE COMPREHENSIVE SUMMARY
+      # ============================================
       - name: 📝 Create Deployment Summary
+        if: always()
         run: |
           echo "Creating deployment summary..."
           
-          # Create GitHub Actions Summary (visible in workflow run)
+          # Create GitHub Actions Summary
           {
-            echo "## 🚀 GKE Deployment Successful"
+            echo "## 🚀 GKE Deployment with Load Testing"
             echo ""
             echo "**Commit:** \`${{ github.sha }}\`"
             echo "**Branch:** \`${{ github.ref_name }}\`"
@@ -242,67 +471,89 @@ jobs:
             echo "| **Cluster** | \`${{ env.GKE_CLUSTER }}\` |"
             echo "| **Region** | \`${{ env.GKE_REGION }}\` |"
             echo "| **Deployment** | \`${{ env.DEPLOYMENT_NAME }}\` |"
+            echo "| **Service IP** | \`$SERVICE_IP\` |"
             echo ""
             
-            if [ -n "$SERVICE_IP" ]; then
-              echo "### 🌐 Service Endpoint"
+            echo "### 🌐 Service Endpoint"
+            echo ""
+            echo "✅ **Endpoint:** http://$SERVICE_IP"
+            echo ""
+            echo '```bash'
+            echo "curl -X POST http://$SERVICE_IP/predict \\"
+            echo '  -H "Content-Type: application/json" \'
+            echo '  -d '"'"'{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'"'"
+            echo '```'
+            echo ""
+            
+            if [ -f "wrk_output.txt" ]; then
+              echo "### 🔥 Load Test Results"
               echo ""
-              echo "✅ **Endpoint is live:** http://$SERVICE_IP"
-              echo ""
-              echo "**Test the API:**"
-              echo '```bash'
-              echo "curl -X POST http://$SERVICE_IP/predict \\"
-              echo '  -H "Content-Type: application/json" \'
-              echo '  -d '"'"'{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}'"'"
               echo '```'
-              echo ""
-              
-              if [ -f "prediction.json" ]; then
-                echo "### 🧪 Prediction Test Result"
-                echo ""
-                echo "✅ **Status:** Endpoint responding correctly"
-                echo ""
-                echo '```json'
-                cat prediction.json
-                echo '```'
-                echo ""
-              fi
-            else
-              echo "### ⏳ Service Endpoint"
-              echo ""
-              echo "⚠️ **Status:** LoadBalancer IP is being provisioned"
-              echo ""
-              echo "Check status with:"
-              echo '```bash'
-              echo "kubectl get service ${{ env.SERVICE_NAME }}"
+              cat wrk_output.txt
               echo '```'
               echo ""
             fi
             
-            echo "### 📊 Pod Status"
+            echo "### 📈 Auto-Scaling Results"
             echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| **Initial Pods** | $INITIAL_PODS |"
+            echo "| **Final Pods** | $FINAL_PODS |"
+            echo "| **Max Pods (HPA)** | $MAX_PODS |"
+            
+            if [ "$FINAL_PODS" -gt "$INITIAL_PODS" ]; then
+              echo "| **Scaling Status** | ✅ Successfully scaled from $INITIAL_PODS to $FINAL_PODS |"
+            else
+              echo "| **Scaling Status** | ⚠️  No scaling observed |"
+            fi
+            echo ""
+            
+            echo "### 📊 Current Cluster State"
+            echo ""
+            echo "**Pods:**"
             echo '```'
             kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
             echo '```'
             echo ""
-            echo "### 🔍 Quick Commands"
+            
+            echo "**HPA Status:**"
+            echo '```'
+            kubectl get hpa 2>/dev/null || echo "No HPA configured"
+            echo '```'
+            echo ""
+            
+            echo "### 🔍 Useful Commands"
             echo ""
             echo '```bash'
             echo "# View logs"
             echo "kubectl logs -l app=${{ env.IMAGE_NAME }} --tail=100"
             echo ""
-            echo "# Check deployment status"
-            echo "kubectl get deployment ${{ env.DEPLOYMENT_NAME }}"
+            echo "# Check HPA status"
+            echo "kubectl get hpa"
+            echo "kubectl describe hpa"
             echo ""
-            echo "# Get service details"
-            echo "kubectl get service ${{ env.SERVICE_NAME }}"
-            echo ""
-            echo "# Scale deployment"
+            echo "# Manual scaling"
             echo "kubectl scale deployment/${{ env.DEPLOYMENT_NAME }} --replicas=3"
+            echo ""
+            echo "# Delete HPA"
+            echo "kubectl delete hpa <hpa-name>"
             echo '```'
             
           } >> $GITHUB_STEP_SUMMARY
           
-          echo "✅ Deployment summary created!"
-          echo ""
-          echo "📋 View the full report in the 'Summary' tab of this workflow run"
+          echo "✅ Summary created!"
+
+      # ============================================
+      # STEP 17: UPLOAD ARTIFACTS
+      # ============================================
+      - name: 📤 Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            load_test_results.txt
+            wrk_output.txt
+            load_test.lua
+          retention-days: 30

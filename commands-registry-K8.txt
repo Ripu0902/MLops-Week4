@@ -16,6 +16,13 @@ echo "Your project ID is: $PROJECT_ID
 gcloud iam service-accounts create iris-api-sa \
     --display-name="Iris API Service Account"
 
+
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:iris-api-sa@$PROJECT_ID.iam.gserviceaccount.com" --role="roles/logging.logWriter"
+
+
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:iris-api-sa@$PROJECT_ID.iam.gserviceaccount.com" --role="roles/cloudtrace.agent"
+
+
 gcloud storage buckets add-iam-policy-binding gs://vertex-mlflow-artifacts-electric-wave-472614-d5 \
     --member="serviceAccount:iris-api-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/storage.objectViewer"
@@ -23,7 +30,7 @@ gcloud storage buckets add-iam-policy-binding gs://vertex-mlflow-artifacts-elect
 gcloud iam service-accounts add-iam-policy-binding iris-api-sa@${PROJECT_ID}.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
     --member="serviceAccount:${PROJECT_ID}.svc.id.goog[default/iris-api-ksa]"
-
+    
 kubectl create serviceaccount iris-api-ksa --namespace default
 
 kubectl annotate serviceaccount iris-api-ksa \
@@ -43,3 +50,12 @@ kubectl get pods -w
 kubectl get service iris-api-service -w
 
 
+=============================================wrk test============================================
+#Basic Load
+wrk -t2 -c10 -d10s -s iris-api-test.lua http://34.123.39.182:80
+
+#Intermediate load
+wrk -t4 -c50 -d30s -s iris-api-test.lua http://34.123.39.182:80
+
+#Excess Load
+wrk -t8 -c100 -d60s -s iris-api-test.lua http://34.123.39.182:80

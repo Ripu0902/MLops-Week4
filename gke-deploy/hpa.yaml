@@ -3,30 +3,39 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: iris-api-hpa
 spec:
-  # This points the HPA at your deployment
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: iris-api-deployment # Must match your Deployment's name
-    
-  # --- SCALING RULES ---
-  
-  minReplicas: 3   # The minimum number of pods to run
-  maxReplicas: 10  # The maximum number of pods to scale up to
-  
+    name: iris-api-deployment
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        # Target 80% of the requested CPU (your request is 250m)
-        averageUtilization: 70 
-        
+        averageUtilization: 50
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        # Target 80% of the requested memory (your request is 256Mi)
-        averageUtilization: 80
+        averageUtilization: 70
+  # behavior:
+  #   scaleUp:
+  #     stabilizationWindowSeconds: 0
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 15
+  #     - type: Pods
+  #       value: 2
+  #       periodSeconds: 15
+  #     selectPolicy: Max
+  #   scaleDown:
+  #     stabilizationWindowSeconds: 60
+  #     policies:
+  #     - type: Percent
+  #       value: 50
+  #       periodSeconds: 30
