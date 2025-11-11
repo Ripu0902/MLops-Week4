@@ -47,7 +47,6 @@ jobs:
         run: |
           echo "Configuring Docker authentication..."
           gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
-
       # ============================================
       # STEP 4: BUILD AND PUSH DOCKER IMAGE
       # ============================================
@@ -66,7 +65,6 @@ jobs:
           
           # Save for later steps
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-
       # ============================================
       # STEP 5: INSTALL GKE AUTH PLUGIN
       # ============================================
@@ -80,7 +78,6 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
           echo "✅ Plugin installed"
-
       # ============================================
       # STEP 6: GET GKE CREDENTIALS
       # ============================================
@@ -92,7 +89,6 @@ jobs:
           echo "🔍 Verifying cluster connection..."
           kubectl cluster-info
           kubectl get nodes
-
       # ============================================
       # STEP 7: DEPLOY TO GKE
       # ============================================
@@ -155,7 +151,6 @@ jobs:
           echo ""
           echo "📦 Running pods:"
           kubectl get pods -l app=${{ env.IMAGE_NAME }}
-
       # ============================================
       # STEP 8: WAIT FOR SERVICE TO BE READY
       # ============================================
@@ -184,7 +179,6 @@ jobs:
             echo "❌ LoadBalancer IP not assigned after $MAX_ATTEMPTS attempts"
             exit 1
           fi
-
       # ============================================
       # STEP 9: TEST THE ENDPOINT
       # ============================================
@@ -217,25 +211,14 @@ jobs:
             cat prediction.json || echo "No response body"
             exit 1
           fi
-
       # ============================================
       # STEP 10: INSTALL WRK FOR LOAD TESTING
       # ============================================
       - name: 📦 Install WRK Load Testing Tool
         run: |
           echo "Installing WRK..."
-          sudo apt-get update -y
-          sudo apt-get install -y build-essential libssl-dev git
-          
-          cd /tmp
-          git clone https://github.com/wg/wrk.git
-          cd wrk
-          make
-          sudo cp wrk /usr/local/bin/
-          
+          sudo apt-get install -y wrk        
           echo "✅ WRK installed successfully"
-          wrk --version
-
       # ============================================
       # STEP 11: PREPARE LOAD TEST SCRIPT
       # ============================================
@@ -244,7 +227,6 @@ jobs:
           cat > load_test.lua << 'EOF'
           -- WRK Load Testing Script for Iris Prediction API
           math.randomseed(os.time())
-
           local iris_samples = {
               { sepal_length = 5.1, sepal_width = 3.5, petal_length = 1.4, petal_width = 0.2 },
               { sepal_length = 4.9, sepal_width = 3.0, petal_length = 1.4, petal_width = 0.2 },
@@ -256,11 +238,9 @@ jobs:
               { sepal_length = 7.1, sepal_width = 3.0, petal_length = 5.9, petal_width = 2.1 },
               { sepal_length = 6.5, sepal_width = 3.0, petal_length = 5.8, petal_width = 2.2 }
           }
-
           request_count = 0
           error_count = 0
           success_count = 0
-
           request = function()
               request_count = request_count + 1
               local sample = iris_samples[math.random(#iris_samples)]
@@ -275,7 +255,6 @@ jobs:
                   ["Accept"] = "application/json"
               }, body)
           end
-
           response = function(status, headers, body)
               if status == 200 then
                   success_count = success_count + 1
@@ -283,7 +262,6 @@ jobs:
                   error_count = error_count + 1
               end
           end
-
           done = function(summary, latency, requests)
               print("\n========================================")
               print("Load Test Summary")
@@ -306,7 +284,6 @@ jobs:
           
           echo "✅ Load test script created"
           cat load_test.lua
-
       # ============================================
       # STEP 12: RECORD PRE-LOAD TEST STATE
       # ============================================
@@ -325,7 +302,6 @@ jobs:
           echo "$INITIAL_PODS" >> load_test_results.txt
           echo "Initial pods: $INITIAL_PODS"
           echo "INITIAL_PODS=$INITIAL_PODS" >> $GITHUB_ENV
-
       # ============================================
       # STEP 13: RUN STRESS TEST WITH WRK
       # ============================================
@@ -344,7 +320,7 @@ jobs:
           echo ""
           
           # Run WRK load test
-          wrk -t4 -c50 -d60s -s load_test.lua http://$SERVICE_IP 2>&1 | tee wrk_output.txt
+          wrk -t4 -c50 -d30s -s load_test.lua http://$SERVICE_IP 2>&1 | tee wrk_output.txt
           
           echo ""
           echo "✅ Load test completed"
@@ -360,7 +336,6 @@ jobs:
           echo "" >> load_test_results.txt
           echo "Total Requests: $TOTAL_REQUESTS" >> load_test_results.txt
           echo "Requests per second: $REQUESTS_PER_SEC" >> load_test_results.txt
-
       # ============================================
       # STEP 14: MONITOR AUTO-SCALING
       # ============================================
@@ -412,7 +387,6 @@ jobs:
           
           echo "FINAL_PODS=$FINAL_PODS" >> $GITHUB_ENV
           echo "MAX_PODS=$MAX_PODS" >> $GITHUB_ENV
-
       # ============================================
       # STEP 15: VERIFY AUTO-SCALING OCCURRED
       # ============================================
@@ -443,7 +417,6 @@ jobs:
           echo ""
           echo "Final pod status:"
           kubectl get pods -l app=${{ env.IMAGE_NAME }} -o wide
-
       # ============================================
       # STEP 16: CREATE COMPREHENSIVE SUMMARY
       # ============================================
@@ -543,7 +516,6 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
           
           echo "✅ Summary created!"
-
       # ============================================
       # STEP 17: UPLOAD ARTIFACTS
       # ============================================

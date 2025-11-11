@@ -15,7 +15,7 @@ spec:
       serviceAccountName: iris-api-ksa
       containers:
       - name: iris-api-container
-        image: us-central1-docker.pkg.dev/electric-wave-472614-d5/iris-app-repo/iris-api:v1
+        image: us-central1-docker.pkg.dev/electric-wave-472614-d5/iris-app-repo/iris-api:9e9c16ba8e2f297ff1de935941f21ce1d31241e4
         ports:
         - containerPort: 8000
         env:
@@ -48,8 +48,8 @@ spec:
         
         resources:
           requests:
-            cpu: "250m"    # Guaranteed 1/4 CPU
-            memory: "256Mi"  # Guaranteed 256MB RAM
+            memory: "256Mi"  # Increase these
+            cpu: "250m"
           limits:
-            cpu: "500m"    # Max 1/2 CPU
-            memory: "512Mi"  # Max 512MB RAM
+            memory: "1Gi"    # Increase these
+            cpu: "500m"

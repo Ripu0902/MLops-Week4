@@ -41,7 +41,7 @@ kubectl apply -f gke-deploy/deployment.yaml
 
 kubectl apply -f gke-deploy/service.yaml
 
-kubectl apply -f hpa.yaml
+kubectl apply -f gke-deploy/service.yaml
 
 kubectl get hpa
 
