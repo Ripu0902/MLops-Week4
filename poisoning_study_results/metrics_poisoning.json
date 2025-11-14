@@ -1,0 +1,12 @@
+{
+  "run_id": "unknown",
+  "accuracy": 0.66,
+  "f1_score": 0.6488179003658879,
+  "class_metrics": {
+    "setosa": 0.76,
+    "versicolor": 0.32,
+    "virginica": 0.9
+  },
+  "degradation_detected": true,
+  "passed_thresholds": false
+}

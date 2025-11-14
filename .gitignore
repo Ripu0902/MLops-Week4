@@ -2,3 +2,4 @@ venv
 remote/
 .env
 cloud-sql.txt
+mlruns/
